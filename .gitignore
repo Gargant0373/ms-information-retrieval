@@ -3,3 +3,4 @@ scaffolding/index
 .vscode
 .DS_Store
 intro-pyterrier/*_data
+.venv

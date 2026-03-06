@@ -1,0 +1,11 @@
+python-terrier==0.12.1
+requests
+pyterrier-caching==0.3.0
+pyspellchecker
+nltk
+scikit-learn
+lightgbm
+fast-forward-indexes==0.7.0
+pandas
+numpy
+torch
