@@ -175,27 +175,82 @@ def reasoning_test():
 
 
 # ------------------------------------------------
+# llama-cpp-python fallback test
+# ------------------------------------------------
+
+def llama_cpp_test() -> bool:
+    """
+    Test the llama-cpp-python CPU backend.
+    Returns True if the test passes, False otherwise.
+    """
+    print("\n[..] Testing llama-cpp-python fallback backend...")
+    try:
+        import sys
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from project.llama_service import LlamaService
+        from project.config import OLLAMA_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT, find_gguf_model
+
+        gguf = find_gguf_model(MODEL)
+        if not gguf:
+            print(f"[SKIP] No GGUF blob found for {MODEL!r}. Run: ollama pull {MODEL}")
+            return False
+
+        print(f"[..] GGUF found: {gguf}")
+        svc = LlamaService(
+            base_url=OLLAMA_URL,
+            model=OLLAMA_MODEL,
+            timeout=OLLAMA_TIMEOUT,
+        )
+        # Force the llama_cpp backend (skip Ollama which we know is broken)
+        svc._backend = "llama_cpp"
+        print("[..] Running expand_query via llama-cpp-python (CPU)...")
+        result = svc.expand_query("information retrieval systems")
+        if not result:
+            print("[FAIL] llama-cpp-python returned empty result")
+            return False
+        ok(f"llama-cpp-python backend: {result[:80]!r}")
+        return True
+    except Exception as exc:
+        print(f"[FAIL] llama-cpp-python test error: {exc}")
+        return False
+
+
+# ------------------------------------------------
 # Main
 # ------------------------------------------------
 
 def main():
     print("=" * 60)
-    print("Ollama Model Validation")
+    print("Ollama + LlamaService Validation")
     print(f"Endpoint : {OLLAMA_BASE}")
     print(f"Model    : {MODEL}")
     print("=" * 60)
 
+    ollama_ok = False
     try:
         wait_for_api()
         check_model()
         generate_test()
         chat_test()
         reasoning_test()
+        ollama_ok = True
     except requests.exceptions.RequestException as e:
-        fail(f"HTTP request failed: {e}")
+        print(f"[WARN] Ollama test failed: {e}")
+        print("       This is known to happen on macOS 26 due to a Metal")
+        print("       shader bug in MetalPerformancePrimitives.framework.")
+        print("       Checking llama-cpp-python fallback...")
+
+    cpp_ok = llama_cpp_test() if not ollama_ok else True
 
     print("=" * 60)
-    print("RESULT: ALL TESTS PASSED")
+    if ollama_ok:
+        print("RESULT: ALL TESTS PASSED (Ollama)")
+    elif cpp_ok:
+        print("RESULT: PASSED via llama-cpp-python CPU fallback")
+        print("        LlamaService will auto-use this backend.")
+    else:
+        print("RESULT: FAILED — no backend is available.")
+        sys.exit(1)
     print("=" * 60)
 
 

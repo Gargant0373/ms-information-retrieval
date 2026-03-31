@@ -9,3 +9,8 @@ fast-forward-indexes==0.7.0
 pandas
 numpy
 torch
+pytrec-eval-terrier
+matplotlib
+# llama-cpp-python must be installed WITHOUT Metal on macOS 26+:
+# CMAKE_ARGS="-DGGML_METAL=OFF" pip install llama-cpp-python
+llama-cpp-python

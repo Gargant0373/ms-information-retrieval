@@ -102,18 +102,39 @@ class LlamaService:
         self.num_predict = num_predict
         self.system_prompt = system_prompt or _EXPANSION_SYSTEM
         self._session = requests.Session()
+        self._backend: str = "ollama"   # active backend: "ollama" or "llama_cpp"
+        self._llm = None                # llama-cpp-python Llama instance (lazy)
 
     # ------------------------------------------------------------------
     # Public helpers
     # ------------------------------------------------------------------
 
     def is_available(self) -> bool:
-        """Return True if the Ollama API is reachable."""
+        """
+        Return True if ANY backend is available:
+        - Ollama API is reachable, OR
+        - llama-cpp-python is installed and the GGUF model file is present.
+        """
+        # 1. Ollama
         try:
             r = self._session.get(f"{self.base_url}/api/version", timeout=5)
-            return r.status_code == 200
+            if r.status_code == 200:
+                return True
         except requests.RequestException:
-            return False
+            pass
+        # 2. llama-cpp-python
+        try:
+            import llama_cpp  # noqa: F401
+            from project.config import find_gguf_model
+            if find_gguf_model(self.model):
+                return True
+        except ImportError:
+            pass
+        return False
+
+    def backend_info(self) -> str:
+        """Return a human-readable description of the active backend."""
+        return self._backend
 
     def wait_until_ready(self, timeout: int = 30, poll: float = 2.0) -> None:
         """
@@ -140,35 +161,68 @@ class LlamaService:
         return [m["name"] for m in r.json().get("models", [])]
 
     # ------------------------------------------------------------------
+    # llama-cpp-python backend (used when Ollama's Metal backend fails)
+    # ------------------------------------------------------------------
+
+    def _ensure_llama_cpp(self) -> None:
+        """Lazy-initialise the llama-cpp-python Llama instance."""
+        if self._llm is not None:
+            return
+        try:
+            from llama_cpp import Llama
+        except ImportError as exc:
+            raise RuntimeError(
+                "llama-cpp-python is not installed. "
+                'Install it with: CMAKE_ARGS="-DGGML_METAL=OFF" pip install llama-cpp-python'
+            ) from exc
+
+        from project.config import find_gguf_model
+        model_path = find_gguf_model(self.model)
+        if not model_path:
+            raise RuntimeError(
+                f"No GGUF blob found for {self.model!r}. "
+                f"Pull it first with: ollama pull {self.model}"
+            )
+        logger.info("Loading GGUF via llama-cpp-python (CPU): %s", model_path)
+        self._llm = Llama(
+            model_path=model_path,
+            n_ctx=512,
+            n_threads=max(4, os.cpu_count() or 4),
+            n_gpu_layers=0,   # CPU-only — bypasses the broken Metal backend
+            verbose=False,
+        )
+
+    def _chat_llama_cpp(
+        self,
+        user_message: str,
+        system_message: Optional[str] = None,
+        num_predict: Optional[int] = None,
+    ) -> str:
+        """Run a chat completion via llama-cpp-python (CPU)."""
+        self._ensure_llama_cpp()
+        messages = []
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        messages.append({"role": "user", "content": user_message})
+        result = self._llm.create_chat_completion(
+            messages=messages,
+            max_tokens=num_predict or self.num_predict,
+            temperature=self.temperature,
+        )
+        return result["choices"][0]["message"]["content"].strip()
+
+    # ------------------------------------------------------------------
     # Core generation methods
     # ------------------------------------------------------------------
 
-    def chat(
+    def _chat_ollama(
         self,
         user_message: str,
         system_message: Optional[str] = None,
         temperature: Optional[float] = None,
         num_predict: Optional[int] = None,
     ) -> str:
-        """
-        Send a single-turn chat request and return the assistant reply.
-
-        Parameters
-        ----------
-        user_message : str
-            The user-turn content.
-        system_message : str | None
-            Optional system prompt override.
-        temperature : float | None
-            Override instance-level temperature.
-        num_predict : int | None
-            Override instance-level num_predict.
-
-        Returns
-        -------
-        str
-            The model's reply (stripped).
-        """
+        """Send a single-turn chat request to the Ollama API."""
         messages = []
         if system_message:
             messages.append({"role": "system", "content": system_message})
@@ -191,6 +245,55 @@ class LlamaService:
         )
         r.raise_for_status()
         return r.json()["message"]["content"].strip()
+
+    def chat(
+        self,
+        user_message: str,
+        system_message: Optional[str] = None,
+        temperature: Optional[float] = None,
+        num_predict: Optional[int] = None,
+    ) -> str:
+        """
+        Send a single-turn chat request and return the assistant reply.
+
+        Tries Ollama first. If Ollama returns a 500 (which happens on macOS
+        when the Metal backend fails to initialise), automatically falls back
+        to ``llama-cpp-python`` running in CPU-only mode.
+
+        Parameters
+        ----------
+        user_message : str
+            The user-turn content.
+        system_message : str | None
+            Optional system prompt override.
+        temperature : float | None
+            Override instance-level temperature.
+        num_predict : int | None
+            Override instance-level num_predict.
+
+        Returns
+        -------
+        str
+            The model's reply (stripped).
+        """
+        if self._backend == "llama_cpp":
+            return self._chat_llama_cpp(user_message, system_message, num_predict)
+
+        try:
+            return self._chat_ollama(user_message, system_message, temperature, num_predict)
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 500:
+                logger.warning(
+                    "Ollama returned 500 (Metal backend crash on macOS 26). "
+                    "Switching permanently to llama-cpp-python (CPU)."
+                )
+                self._backend = "llama_cpp"
+                return self._chat_llama_cpp(user_message, system_message, num_predict)
+            raise
+        except requests.RequestException as exc:
+            logger.warning("Ollama unreachable (%s). Switching to llama-cpp-python.", exc)
+            self._backend = "llama_cpp"
+            return self._chat_llama_cpp(user_message, system_message, num_predict)
 
     def generate(
         self,
