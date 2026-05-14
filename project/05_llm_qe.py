@@ -26,7 +26,7 @@ from project.utils import evaluate_run, sanitize_terrier_query, save_metrics, sa
 def main() -> dict:
     svc = LlamaService(base_url=OLLAMA_URL, model=OLLAMA_MODEL, timeout=OLLAMA_TIMEOUT)
     if not svc.is_available():
-        print(f"⚠️  Neither Ollama nor llama-cpp-python is available.")
+        print(f"[WARNING] Neither Ollama nor llama-cpp-python is available.")
         print(f"   Option 1: Start Ollama:  ollama serve &")
         print(f"   Option 2: Install CPU backend:")
         print(f"     CMAKE_ARGS=\"-DGGML_METAL=OFF\" pip install llama-cpp-python")
@@ -68,7 +68,7 @@ def main() -> dict:
         print(f"  {k}: {v:.4f}")
     save_metrics(metrics, "llm_qe")
 
-    print("\n✅ LLM QE done.")
+    print("\n[OK] LLM QE done.")
     return metrics
 
 

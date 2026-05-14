@@ -92,10 +92,10 @@ def run_pipeline(force_index: bool = False, skip_llm: bool = False) -> None:
         try:
             _load_step("05_llm_qe.py").main()
         except SystemExit as exc:
-            print(f"  ⚠️  LLM QE step exited early (code {exc.code}). Writing zero-score stub.")
+            print(f"  [WARNING] LLM QE step exited early (code {exc.code}). Writing zero-score stub.")
             _write_zero_metrics("llm_qe")
         except Exception as exc:
-            print(f"  ⚠️  LLM QE step failed: {exc}")
+            print(f"  [WARNING] LLM QE step failed: {exc}")
             _write_zero_metrics("llm_qe")
 
     _section("STEP 6 — Compare all methods")

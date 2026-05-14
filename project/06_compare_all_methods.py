@@ -93,7 +93,7 @@ def main() -> None:
         score = comparison.loc[metric, best]
         print(f"  {metric:15} → {best} ({score:.4f})")
 
-    print("\n✅ Comparison complete.")
+    print("\n[OK] Comparison complete.")
 
 
 if __name__ == "__main__":

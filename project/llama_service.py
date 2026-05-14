@@ -44,21 +44,19 @@ logger = logging.getLogger(__name__)
 _DEFAULT_BASE_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 _DEFAULT_MODEL    = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
 
-# Prompt template for query expansion / rewriting
+# Prompt template for synonym & paraphrase generation
 _EXPANSION_SYSTEM = (
     "You are an expert Information Retrieval assistant. "
-    "Your job is to rewrite or expand user search queries so they work "
-    "better with a keyword-based search engine (BM25). "
-    "Return ONLY the rewritten query — no explanation, no punctuation, "
-    "no quotes, no bullet points."
+    "Your task is to generate alternative phrasings and synonyms for a search query "
+    "as they would appear in relevant documents. "
+    "Return ONLY the alternative phrasings, one per line, no numbering, "
+    "no bullet points, no explanation."
 )
 
 _EXPANSION_USER_TMPL = (
-    "Rewrite the following search query to improve retrieval performance. "
-    "Add relevant synonyms, related terms, or clarifications. "
-    "Keep the result concise (5–15 words).\n\n"
-    "Original query: {query}\n\n"
-    "Rewritten query:"
+    "Given the search query: {query}\n\n"
+    "Generate 5 alternative phrasings and synonyms that a relevant document might use.\n"
+    "Return only the terms, one per line."
 )
 
 
@@ -347,15 +345,17 @@ class LlamaService:
 
     def expand_query(self, query: str) -> str:
         """
-        Rewrite/expand a search query using the LLM.
+        Expand a search query using LLM synonym & paraphrase generation.
+
+        Prompts the LLM to generate 5 alternative phrasings/synonyms as they
+        would appear in relevant documents, then builds a flat deduplicated
+        term bag from the original query tokens plus all phrase tokens.
+        Falls back to the original query on any error.
 
         This is the main entry-point for the IR pipeline and is designed
         to be passed directly to ``util.evaluate_all``:
 
             evaluate_all(svc.expand_query)
-
-        The method falls back to the original query on any error, so it
-        is safe to use in batch evaluation.
 
         Parameters
         ----------
@@ -365,18 +365,29 @@ class LlamaService:
         Returns
         -------
         str
-            The rewritten query (falls back to *query* on failure).
+            Expanded query as a flat bag of unique terms (falls back to
+            *query* on failure).
         """
         try:
             user_msg = _EXPANSION_USER_TMPL.format(query=query)
-            expanded = self.chat(
+            raw = self.chat(
                 user_message=user_msg,
                 system_message=self.system_prompt,
+                num_predict=200,
             )
-            # Strip any residual punctuation / quotes the model may add
-            expanded = _clean_query(expanded)
-            if not expanded:
+            # Parse the multi-line list of phrases returned by the LLM
+            phrases = []
+            for line in raw.splitlines():
+                phrase = _clean_query(line)
+                if phrase:
+                    phrases.append(phrase)
+            if not phrases:
                 return query
+            # Build a flat, deduplicated term bag: original tokens + phrase tokens
+            seen: dict[str, None] = {}
+            for tok in (query + " " + " ".join(phrases)).split():
+                seen[tok.lower()] = None
+            expanded = " ".join(seen.keys())
             logger.debug("expand_query: %r → %r", query, expanded)
             return expanded
         except Exception as exc:  # noqa: BLE001

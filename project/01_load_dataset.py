@@ -44,7 +44,7 @@ def main() -> None:
     for i, doc in enumerate(sample):
         print(f"  Doc {i}: {doc}")
 
-    print("\n✅ Dataset loaded.")
+    print("\n[OK] Dataset loaded.")
 
 
 if __name__ == "__main__":

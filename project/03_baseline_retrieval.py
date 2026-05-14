@@ -34,7 +34,7 @@ def main() -> dict:
         print(f"  {k}: {v:.4f}")
     save_metrics(metrics, "baseline")
 
-    print("\n✅ Baseline done.")
+    print("\n[OK] Baseline done.")
     return metrics
 
 

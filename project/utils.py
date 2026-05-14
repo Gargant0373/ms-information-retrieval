@@ -20,12 +20,15 @@ def ensure_output_dir() -> str:
 
 def sanitize_terrier_query(query: str) -> str:
     """
-    Strip characters that Terrier's query parser cannot handle
-    (apostrophes, quotes, parentheses, operators, etc.).
+    Normalise a query string so Terrier's query parser handles it safely:
+    lowercase, then remove every character that is not a letter, digit,
+    or whitespace (colons trigger field-selector syntax, parentheses trigger
+    grouping, etc.), then collapse runs of whitespace.
     """
     import re
-    # Remove single quotes (apostrophes), double quotes, and Terrier-special chars
-    query = re.sub(r"[\"'`#^()\[\]{}|!+\-]", " ", query)
+    query = query.lower()
+    # Remove anything that isn't a plain word character or whitespace
+    query = re.sub(r"[^\w\s]", " ", query)
     # Collapse runs of whitespace
     query = re.sub(r"\s+", " ", query).strip()
     return query

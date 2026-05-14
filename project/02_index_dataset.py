@@ -47,7 +47,7 @@ def main(force_reindex: bool = False) -> None:
     print(f"  Vocab     : {stats.getNumberOfUniqueTerms()}")
     print(f"  Avg len   : {stats.getAverageDocumentLength():.2f}")
 
-    print("\n✅ Index created.")
+    print("\n[OK] Index created.")
 
 
 if __name__ == "__main__":

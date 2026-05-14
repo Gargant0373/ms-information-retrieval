@@ -37,12 +37,15 @@ BM25_MODEL = "BM25"
 PRF_FB_DOCS  = 3
 PRF_FB_TERMS = 10
 
+# LLM synonym & paraphrase generation
+LLM_SYNONYMS_N = 5
+
 # ---------------------------------------------------------------------------
 # Evaluation
 # ---------------------------------------------------------------------------
 
-EVAL_METRICS    = {"map", "ndcg", "ndcg_cut_10", "P_5", "P_10"}
-DISPLAY_METRICS = ["map", "ndcg", "ndcg_cut_10", "P_5", "P_10"]
+EVAL_METRICS    = {"map", "ndcg", "ndcg_cut_10", "P_5", "P_10", "recall_10", "recall_100"}
+DISPLAY_METRICS = ["map", "ndcg", "ndcg_cut_10", "P_5", "P_10", "recall_10", "recall_100"]
 
 # ---------------------------------------------------------------------------
 # LLM / Ollama

@@ -41,7 +41,7 @@ def main() -> dict:
         print(f"  {k}: {v:.4f}")
     save_metrics(metrics, "classical_qe")
 
-    print("\n✅ Classical QE done.")
+    print("\n[OK] Classical QE done.")
     return metrics
 
 
